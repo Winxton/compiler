@@ -122,33 +122,30 @@ string getProcedureName(tree *t) {
   }
 }
 
-void populateArgList(tree *t, vector<string> &argList) {
+string getType(const tree *node, TopSymbolTable &topSymbolTable, string currentProcedure);
 
-  if (t->rule == "arglist expr") {
-    populateArgList(t->children[0], argList);
-  } else if (t->rule == "arglist expr COMMA arglist") {
-    populateArgList(t->children[0], argList);
-    populateArgList(t->children[2], argList);
-  } else if (t->rule == "expr term") {
-    populateArgList(t->children[0], argList);
-  } else if (t->rule == "term factor") {
-    populateArgList(t->children[0], argList);
-  } else if (t->rule == "factor ID" || t->rule == "factor NUM") {
-    populateArgList(t->children[0], argList);
-  } else if (t->tokens[0] == "ID") {
-    argList.push_back(t->tokens[1]); // push argument name
-  } else if (t->tokens[0] == "NUM") { // naked number
-    argList.push_back("NUM");
-  } else {
+void populateArgList(tree *t, TopSymbolTable &topSymbolTable, string currentProcedure, vector<string> &argList) {
+
+  if (t->rule == "arglist expr") 
+  {
+    string exprType = getType(t->children[0], topSymbolTable, currentProcedure);
+    argList.push_back(exprType);
+  } 
+  else if (t->rule == "arglist expr COMMA arglist") 
+  {
+    string exprType = getType(t->children[0], topSymbolTable, currentProcedure);
+    argList.push_back(exprType);
+    populateArgList(t->children[2], topSymbolTable, currentProcedure, argList);
+  }
+  else {
     throw string("ERROR: Could not parse Arguments: " + t->rule);
   }
 }
 
-bool wellTyped(tree *node) {
-  return false;
-}
-
 string getType(const tree *node, TopSymbolTable &topSymbolTable, string currentProcedure) {
+
+  // Literals and identifiers
+
   if (node->tokens[0] == "ID") {
     return topSymbolTable[currentProcedure].second[node->tokens[1]];
   }
@@ -161,52 +158,71 @@ string getType(const tree *node, TopSymbolTable &topSymbolTable, string currentP
     return "int*";
   }
 
-  if (node->rule == "factor ID" || node->rule == "factor NUM" || node->rule == "factor NULL") {
+  // singleton productions -> type of LHS is type of RHS
+  if (node->rule == "expr term" 
+    || node->rule == "term factor" 
+    || node->rule == "factor ID" 
+    || node->rule == "lvalue ID" 
+    || node->rule == "factor ID" 
+    || node->rule == "factor NUM" 
+    || node->rule == "factor NULL")
+  {
     return getType(node->children[0], topSymbolTable, currentProcedure);
   }
 
+  // The type of a factor deriving LPAREN expr RPAREN is the same as the type of the expr.
   if (node->rule == "factor LPAREN expr RPAREN") {
     return getType(node->children[1], topSymbolTable, currentProcedure); // expr
   }
 
+  // The type of a factor deriving AMP lvalue is int*. The type of the derived lvalue (i.e. the one preceded by AMP) must be int.
   if (node->rule == "factor AMP lvalue") {
     string LvalueType = getType(node->children[1], topSymbolTable, currentProcedure);
     if (LvalueType != "int") throw string("ERROR: & must be used on int");
     else return "int*";
   }
+
+  // The type of a factor deriving NEW INT LBRACK expr RBRACK is int*. The type of the derived expr must be int.
   if (node->rule == "factor NEW INT LBRACK expr RBRACK") {
     // The type of the derived expr must be int.
     string exprType = getType(node->children[3], topSymbolTable, currentProcedure);
+    
     if (exprType != "int") 
       throw string("ERROR: new [] must use int as parameter, " + exprType + " given");
 
     return "int*";
   }
+
+  // function call with no arguments
+  // The type of a factor deriving ID LPAREN RPAREN is int.
+  // The procedure whose name is ID must have an empty signature.
   if (node->rule == "factor ID LPAREN RPAREN") {
-    //The procedure whose name is ID must have an empty signature.
-    if (topSymbolTable[currentProcedure].first.size() != 0) 
+    string funcName = node->children[0]->tokens[1];
+
+    if (topSymbolTable[funcName].first.size() != 0) 
       throw string("ERROR: Function takes in 0 parameters");
 
     return "int";
   }
-  if (node->rule == "factor ID LPAREN arglist RPAREN") {
-    // TODO need to check that all arguements are ints
 
-    
-    vector<string> argList;
-    populateArgList(node->children[2], argList);
+  // function call with arguments
+  // The type of a factor deriving ID LPAREN arglist RPAREN is int. 
+  // The procedure whose name is ID must have a signature whose length is equal to the number of expr strings 
+  // (separated by COMMA) that are derived from arglist. 
+  // Further the types of these expr strings must exactly match, 
+  // in order, the types in the procedure's signature.
+  if (node->rule == "factor ID LPAREN arglist RPAREN") {
+
+    vector<string> argTypeList;
+    populateArgList(node->children[2], topSymbolTable, currentProcedure, argTypeList);
     string funcName = node->children[0]->tokens[1];
     vector<string> &functionSignature = topSymbolTable[funcName].first;
 
-    cerr << "Inside: " << currentProcedure << ",  Function called: " << funcName << endl;
-    cerr << argList.size() << " " << functionSignature.size() << endl;
-    cerr << endl;
+    if (argTypeList.size() != functionSignature.size()) throw string("ERROR: Invalid number of arguments");
 
-    if (argList.size() != functionSignature.size()) throw string("ERROR: Invalid number of arguments");
-
-    for (int i =0; i<argList.size(); i++) {
+    for (int i =0; i<argTypeList.size(); i++) {
         // type of parameter passed into the function (symbol is inside the current procedure)
-        string varType = argList[i] == "NUM" ? "int" : topSymbolTable[currentProcedure].second[argList[i]];
+        string varType = argTypeList[i];
 
         // type of the function signature
         string sigType = functionSignature[i];
@@ -219,26 +235,45 @@ string getType(const tree *node, TopSymbolTable &topSymbolTable, string currentP
     return "int";
   }
 
-  if (node->rule == "lvalue STAR factor") {
+  // The type of a factor or lvalue deriving STAR factor is int. 
+  // The type of the derived factor (i.e. the one preceded by STAR) must be int*.
+  if (node->rule == "lvalue STAR factor" || node->rule == "factor STAR factor") 
+  {
     string factorType = getType(node->children[1], topSymbolTable, currentProcedure);
-    if (factorType == "int") throw string("TYPE ERROR: cannot deference an int");
-    else return "int"; // factorType is int*
+
+    if (factorType == "int") {
+      throw string("TYPE ERROR: cannot deference an int");
+    } 
+    else {
+      return "int"; // factorType is int*
+    }
   }
   
+  // The type of an lvalue deriving LPAREN lvalue RPAREN is the same as the type of the derived lvalue.
   if (node->rule == "lvalue LPAREN lvalue RPAREN") {
     return getType(node->children[1], topSymbolTable, currentProcedure);
   }
 
-  // singleton productions
-  if (node->rule == "expr term" || node->rule == "term factor" || node->rule == "factor ID" || node->rule == "lvalue ID") {
-    return getType(node->children[0], topSymbolTable, currentProcedure);
-  }
-
   // The type of a term directly deriving anything other than just factor is int.
-  if (node->tokens[0] == "term") {
+  // The term and factor directly derived from such a term must have type int.
+  if (node->rule == "term term STAR factor" || node->rule == "term term SLASH factor" || node->rule == "term term PCT factor") 
+  {
+    if (getType(node->children[0], topSymbolTable, currentProcedure) != "int"
+      || getType(node->children[2], topSymbolTable, currentProcedure) != "int") 
+      {
+        string op = node->children[1]->tokens[1];
+        throw string("ERROR: invalid operation: " + op + " cannot be used with int* " + " in " + currentProcedure);
+      }
+
     return "int";
   }
 
+  /*
+  When expr derives expr PLUS term:
+  The derived expr and the derived term may both have type int, in which case the type of the expr deriving them is int.
+  The derived expr may have type int* and the derived term may have type int, in which case the type of the expr deriving them is int*.
+  The derived expr may have type int and the derived term may have type int*, in which case the type of the expr deriving them is int*.
+  */
   if (node->rule == "expr expr PLUS term") {
     string L = getType(node->children[0], topSymbolTable, currentProcedure); // expr
     string R = getType(node->children[2], topSymbolTable, currentProcedure); // term
@@ -252,7 +287,12 @@ string getType(const tree *node, TopSymbolTable &topSymbolTable, string currentP
       throw string("TYPE ERROR: cannot add two int*");
     }
   }
-
+  /*
+  When expr derives expr MINUS term:
+  The derived expr and the derived term may both have type int, in which case the type of the expr deriving them is int.
+  The derived expr may have type int* and the derived term may have type int, in which case the type of the expr deriving them is int*.
+  The derived expr and the derived term may both have type int*, in which case the type of the expr deriving them is int.
+  */
   if (node->rule == "expr expr MINUS term") {
     string L = getType(node->children[0], topSymbolTable, currentProcedure); // expr
     string R = getType(node->children[2], topSymbolTable, currentProcedure); // term
@@ -266,8 +306,7 @@ string getType(const tree *node, TopSymbolTable &topSymbolTable, string currentP
       return "int";
     }
   }
-
-  // lhs of assignment
+  
   if (node->rule == "dcl type ID") {
     return getType(node->children[1], topSymbolTable, currentProcedure);
   }
@@ -275,22 +314,126 @@ string getType(const tree *node, TopSymbolTable &topSymbolTable, string currentP
   throw string("ERROR: cannot be typed at " + node->rule);
 }
 
+bool wellTyped(tree *node) {
+  return false;
+}
+
+// assert well typed for expressions with no type (statements and tests)
+// These are program elements that do not themselves have types, 
+// but demand that some of their subelements be given particular types
 void assertWellTyped(const tree *node, TopSymbolTable &topSymbolTable, string currentProcedure) {
   /*
+  // RULES 
+  The second dcl in the sequence directly derived from procedure must derive a type that derives INT.
+  The expr in the sequence directly derived from procedure must have type int.
+  When statement derives lvalue BECOMES expr SEMI, the derived lvalue and the derived expr must have the same type.
+  When statement derives PRINTLN LPAREN expr RPAREN SEMI, the derived expr must have type int.
+  When statement derives DELETE LBRACK RBRACK expr SEMI, the derived expr must have type int*.
+  Whenever test directly derives a sequence containing two exprs, they must both have the same type.
+  When dcls derives dcls dcl BECOMES NUM SEMI, the derived dcl must derive a sequence containing a type that derives INT.
+  When dcls derives dcls dcl BECOMES NULL SEMI, the derived dcl must derive a sequence containing a type that derives INT STAR.
+  Semantics
+  */
 
   // declarations
 
   if (node->rule == "dcls dcls dcl BECOMES NUM SEMI") {
-    if (getType(node->children[1], topSymbolTable, currentProcedure) != "int")
-      throw string("ERROR: must assign number to int");
-  }
-  if (node->rule == "dcls dcls dcl BECOMES NULL SEMI") {
-    if (getType(node->children[1], topSymbolTable, currentProcedure) != "int*")
-      throw string("ERROR: must assign number to int");
+    if (getType(node->children[1], topSymbolTable, currentProcedure) != "int") {
+      throw string("ERROR: must assign number to int, NUM given");
+    }
   }
 
-  // throw string("ERROR: cannot determine well typed at " + node->rule);
+  if (node->rule == "dcls dcls dcl BECOMES NULL SEMI") {
+    if (getType(node->children[1], topSymbolTable, currentProcedure) != "int*") {
+      throw string("ERROR: must assign number to int, NULL given");
+    }
+  }
+
+  // Comparisons
+  // a comparison is well typed if its arguments have the same type
+  if (node->rule == "test expr EQ expr"
+    || node->rule == "test expr NE expr"
+    || node->rule == "test expr LT expr"
+    || node->rule == "test expr LE expr"
+    || node->rule == "test expr GE expr"
+    || node->rule == "test expr GT expr") 
+  {
+      // get type does not return error ->  well typed
+      string L = getType(node->children[0], topSymbolTable, currentProcedure);
+      string R = getType(node->children[2], topSymbolTable, currentProcedure);
+      if (L != R) {
+        throw string("ERROR: comparison between " + L + " and " + R);
+      }
+  }
+
+  if (node->rule == "main INT WAIN LPAREN dcl COMMA dcl RPAREN LBRACE dcls statements RETURN expr SEMI RBRACE") {
+    currentProcedure = "wain";
+
+    string second = getType(node->children[5], topSymbolTable, currentProcedure); // second parameter in wain
+    if (second != "int") throw string("ERROR: wain must take int as second argument");
+
+    //assertWellTyped(node->children[9], topSymbolTable, currentProcedure); // statements
+
+    string returnValue = getType(node->children[11], topSymbolTable, currentProcedure); // return value
+    if (returnValue != "int")  throw string("ERROR: wain must return int");
+  }
+
+  if (node->rule == "procedure INT ID LPAREN params RPAREN LBRACE dcls statements RETURN expr SEMI RBRACE") {
+    currentProcedure = node->children[1]->tokens[1];
+
+    //assertWellTyped(node->children[7], topSymbolTable, currentProcedure); // statements
+
+    string returnValue = getType(node->children[9], topSymbolTable, currentProcedure); // return value (expr)
+    if (returnValue != "int"){
+      string procedureName = node->children[1]->tokens[1];
+      throw string("ERROR: procedure" + procedureName + " must return int");
+    }
+  }
+
+  // Don't need to check these-> already called in recursive call from genSymbols(..)
+  // only worry about base cases
+  /*  
+  if (node->rule == "statements statements statement") {
+    assertWellTyped(node->children[0], topSymbolTable, currentProcedure); // statements
+    assertWellTyped(node->children[1], topSymbolTable, currentProcedure); // statement
+  }
   */
+  /*
+  if (node->rule == "statement IF LPAREN test RPAREN LBRACE statements RBRACE ELSE LBRACE statements RBRACE") {
+    assertWellTyped(node->children[2], topSymbolTable, currentProcedure); // test
+    assertWellTyped(node->children[5], topSymbolTable, currentProcedure); // statements
+    assertWellTyped(node->children[9], topSymbolTable, currentProcedure); // statements
+  }
+
+  if (node->rule == "statement WHILE LPAREN test RPAREN LBRACE statements RBRACE") {
+    assertWellTyped(node->children[2], topSymbolTable, currentProcedure); // test
+    assertWellTyped(node->children[5], topSymbolTable, currentProcedure); // statements
+  }
+  */
+
+  if (node->rule == "statement lvalue BECOMES expr SEMI") {
+    // get type does not return error ->  well typed
+    string L = getType(node->children[0], topSymbolTable, currentProcedure);
+    string R = getType(node->children[2], topSymbolTable, currentProcedure);
+    if (L != R) {
+      throw string("ERROR: cannot assign " + R + " to variable of type " + L);
+    }
+  }
+
+  if (node->rule == "statement PRINTLN LPAREN expr RPAREN SEMI") 
+  {
+    string exprType = getType(node->children[2], topSymbolTable, currentProcedure); // expr
+    if (exprType != "int") {
+      throw string("ERROR: println must use int as parameter, " + exprType + " given");
+    }
+  }
+
+  if (node->rule == "statement DELETE LBRACK RBRACK expr SEMI") {
+    string exprType = getType(node->children[3], topSymbolTable, currentProcedure); // expr
+    if (exprType != "int*") {
+      throw string("ERROR: delete must use int* as parameter, " + exprType + " given");
+    }
+  }
 }
 
 // Compute symbols defined in t.
@@ -379,12 +522,16 @@ void genSymbols(tree *t, TopSymbolTable &topSymbolTable, string currentProcedure
     genSymbols(*it, topSymbolTable, currentProcedure);
   }
 
+
   // TYPECHECK
+  assertWellTyped(t, topSymbolTable, currentProcedure);
+  /*
   if ( t->tokens[0] == "expr" || t->tokens[0] == "lvalue") {
     string type = getType(t, topSymbolTable, currentProcedure);
   } else {
     assertWellTyped(t, topSymbolTable, currentProcedure);
   }
+  */
   
 }
 

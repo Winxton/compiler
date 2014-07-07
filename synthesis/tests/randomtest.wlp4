@@ -1,5 +1,12 @@
-int wain (int *a, int b) {
-   int c = 0;
-   c = b - a;
-   return 0;
+int z(int n) { 
+return z(n-1); 
+}
+
+int foo(int a, int b) { 
+return 2*b-a; 
+}
+
+int wain(int a, int b) 
+{
+  return foo(z(a-b), z(b-a)) + foo(foo(a,b),foo(b,a));
 }
