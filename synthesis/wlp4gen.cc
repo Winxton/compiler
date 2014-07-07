@@ -142,6 +142,7 @@ void populateArgList(tree *t, TopSymbolTable &topSymbolTable, string currentProc
   }
 }
 
+// gets the type of a node, or throws error if incorrect
 string getType(const tree *node, TopSymbolTable &topSymbolTable, string currentProcedure) {
 
   // Literals and identifiers
@@ -314,10 +315,6 @@ string getType(const tree *node, TopSymbolTable &topSymbolTable, string currentP
   throw string("ERROR: cannot be typed at " + node->rule);
 }
 
-bool wellTyped(tree *node) {
-  return false;
-}
-
 // assert well typed for expressions with no type (statements and tests)
 // These are program elements that do not themselves have types, 
 // but demand that some of their subelements be given particular types
@@ -334,6 +331,17 @@ void assertWellTyped(const tree *node, TopSymbolTable &topSymbolTable, string cu
   When dcls derives dcls dcl BECOMES NULL SEMI, the derived dcl must derive a sequence containing a type that derives INT STAR.
   Semantics
   */
+  
+  /*
+  This only needs to check for those where getType() is used for comparison
+
+  for example, statement → WHILE LPAREN test RPAREN LBRACE statements RBRACE 
+  does not need to be checked because "test" and "statements" are 
+  checked in the next recursive call from genSymbols
+
+  This considers all possibilities because getType(...) asserts the correctness
+  of lvalue and expr, which can only come from statements and tests
+  */
 
   // declarations
 
@@ -349,7 +357,6 @@ void assertWellTyped(const tree *node, TopSymbolTable &topSymbolTable, string cu
     }
   }
 
-  // Comparisons
   // a comparison is well typed if its arguments have the same type
   if (node->rule == "test expr EQ expr"
     || node->rule == "test expr NE expr"
@@ -389,27 +396,6 @@ void assertWellTyped(const tree *node, TopSymbolTable &topSymbolTable, string cu
       throw string("ERROR: procedure" + procedureName + " must return int");
     }
   }
-
-  // Don't need to check these-> already called in recursive call from genSymbols(..)
-  // only worry about base cases
-  /*  
-  if (node->rule == "statements statements statement") {
-    assertWellTyped(node->children[0], topSymbolTable, currentProcedure); // statements
-    assertWellTyped(node->children[1], topSymbolTable, currentProcedure); // statement
-  }
-  */
-  /*
-  if (node->rule == "statement IF LPAREN test RPAREN LBRACE statements RBRACE ELSE LBRACE statements RBRACE") {
-    assertWellTyped(node->children[2], topSymbolTable, currentProcedure); // test
-    assertWellTyped(node->children[5], topSymbolTable, currentProcedure); // statements
-    assertWellTyped(node->children[9], topSymbolTable, currentProcedure); // statements
-  }
-
-  if (node->rule == "statement WHILE LPAREN test RPAREN LBRACE statements RBRACE") {
-    assertWellTyped(node->children[2], topSymbolTable, currentProcedure); // test
-    assertWellTyped(node->children[5], topSymbolTable, currentProcedure); // statements
-  }
-  */
 
   if (node->rule == "statement lvalue BECOMES expr SEMI") {
     // get type does not return error ->  well typed
@@ -516,23 +502,13 @@ void genSymbols(tree *t, TopSymbolTable &topSymbolTable, string currentProcedure
     }
   }
 
-
   for (vector<tree*>::iterator it = t->children.begin(); it != t->children.end(); it++) 
   {
     genSymbols(*it, topSymbolTable, currentProcedure);
   }
 
-
   // TYPECHECK
   assertWellTyped(t, topSymbolTable, currentProcedure);
-  /*
-  if ( t->tokens[0] == "expr" || t->tokens[0] == "lvalue") {
-    string type = getType(t, topSymbolTable, currentProcedure);
-  } else {
-    assertWellTyped(t, topSymbolTable, currentProcedure);
-  }
-  */
-  
 }
 
 void printSymbolTable(TopSymbolTable &topSymbolTable) {
