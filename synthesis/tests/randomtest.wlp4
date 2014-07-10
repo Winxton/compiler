@@ -1,12 +1,4 @@
-int z(int n) { 
-return z(n-1); 
-}
 
-int foo(int a, int b) { 
-return 2*b-a; 
-}
-
-int wain(int a, int b) 
-{
-  return foo(z(a-b), z(b-a)) + foo(foo(a,b),foo(b,a));
+int wain(int a, int b) { 
+return a;
 }

@@ -35,6 +35,7 @@ bool isTerminal(const string &sym) {
 // Data structure for storing the parse tree.
 struct tree {
     string rule;
+    string type;
     vector<string> tokens;
     vector<tree*> children;
     ~tree() { for(int i=0; i<children.size(); i++) delete children[i]; }
@@ -122,7 +123,7 @@ string getProcedureName(tree *t) {
   }
 }
 
-string getType(const tree *node, TopSymbolTable &topSymbolTable, string currentProcedure);
+string getType(tree *node, TopSymbolTable &topSymbolTable, string currentProcedure);
 
 void populateArgList(tree *t, TopSymbolTable &topSymbolTable, string currentProcedure, vector<string> &argList) {
 
@@ -143,20 +144,21 @@ void populateArgList(tree *t, TopSymbolTable &topSymbolTable, string currentProc
 }
 
 // gets the type of a node, or throws error if incorrect
-string getType(const tree *node, TopSymbolTable &topSymbolTable, string currentProcedure) {
+string getType(tree *node, TopSymbolTable &topSymbolTable, string currentProcedure) {
+  string type = "";
 
   // Literals and identifiers
 
   if (node->tokens[0] == "ID") {
-    return topSymbolTable[currentProcedure].second[node->tokens[1]];
+    type = topSymbolTable[currentProcedure].second[node->tokens[1]];
   }
 
   if (node->tokens[0] == "NUM") {
-    return "int";
+    type = "int";
   }
 
   if (node->tokens[0] == "NULL") {
-    return "int*";
+    type = "int*";
   }
 
   // singleton productions -> type of LHS is type of RHS
@@ -168,19 +170,19 @@ string getType(const tree *node, TopSymbolTable &topSymbolTable, string currentP
     || node->rule == "factor NUM" 
     || node->rule == "factor NULL")
   {
-    return getType(node->children[0], topSymbolTable, currentProcedure);
+    type = getType(node->children[0], topSymbolTable, currentProcedure);
   }
 
   // The type of a factor deriving LPAREN expr RPAREN is the same as the type of the expr.
   if (node->rule == "factor LPAREN expr RPAREN") {
-    return getType(node->children[1], topSymbolTable, currentProcedure); // expr
+    type = getType(node->children[1], topSymbolTable, currentProcedure); // expr
   }
 
   // The type of a factor deriving AMP lvalue is int*. The type of the derived lvalue (i.e. the one preceded by AMP) must be int.
   if (node->rule == "factor AMP lvalue") {
     string LvalueType = getType(node->children[1], topSymbolTable, currentProcedure);
     if (LvalueType != "int") throw string("ERROR: & must be used on int");
-    else return "int*";
+    else type = "int*";
   }
 
   // The type of a factor deriving NEW INT LBRACK expr RBRACK is int*. The type of the derived expr must be int.
@@ -191,7 +193,7 @@ string getType(const tree *node, TopSymbolTable &topSymbolTable, string currentP
     if (exprType != "int") 
       throw string("ERROR: new [] must use int as parameter, " + exprType + " given");
 
-    return "int*";
+    type = "int*";
   }
 
   // function call with no arguments
@@ -203,7 +205,7 @@ string getType(const tree *node, TopSymbolTable &topSymbolTable, string currentP
     if (topSymbolTable[funcName].first.size() != 0) 
       throw string("ERROR: Function takes in 0 parameters");
 
-    return "int";
+    type = "int";
   }
 
   // function call with arguments
@@ -233,7 +235,7 @@ string getType(const tree *node, TopSymbolTable &topSymbolTable, string currentP
         }
     }
 
-    return "int";
+    type = "int";
   }
 
   // The type of a factor or lvalue deriving STAR factor is int. 
@@ -246,13 +248,13 @@ string getType(const tree *node, TopSymbolTable &topSymbolTable, string currentP
       throw string("TYPE ERROR: cannot deference an int");
     } 
     else {
-      return "int"; // factorType is int*
+      type = "int"; // factorType is int*
     }
   }
   
   // The type of an lvalue deriving LPAREN lvalue RPAREN is the same as the type of the derived lvalue.
   if (node->rule == "lvalue LPAREN lvalue RPAREN") {
-    return getType(node->children[1], topSymbolTable, currentProcedure);
+    type = getType(node->children[1], topSymbolTable, currentProcedure);
   }
 
   // The type of a term directly deriving anything other than just factor is int.
@@ -266,7 +268,7 @@ string getType(const tree *node, TopSymbolTable &topSymbolTable, string currentP
         throw string("ERROR: invalid operation: " + op + " cannot be used with int* " + " in " + currentProcedure);
       }
 
-    return "int";
+    type = "int";
   }
 
   /*
@@ -279,11 +281,11 @@ string getType(const tree *node, TopSymbolTable &topSymbolTable, string currentP
     string L = getType(node->children[0], topSymbolTable, currentProcedure); // expr
     string R = getType(node->children[2], topSymbolTable, currentProcedure); // term
     if (L == "int" && R == "int") {
-      return "int";
+      type = "int";
     } else if (L == "int*" && R == "int") {
-      return "int*";
+      type = "int*";
     } else if (L == "int" && R == "int*") {
-      return "int*";
+      type = "int*";
     } else {// (L == "int*" && R == "int*") {
       throw string("TYPE ERROR: cannot add two int*");
     }
@@ -298,21 +300,26 @@ string getType(const tree *node, TopSymbolTable &topSymbolTable, string currentP
     string L = getType(node->children[0], topSymbolTable, currentProcedure); // expr
     string R = getType(node->children[2], topSymbolTable, currentProcedure); // term
     if (L == "int" && R == "int") {
-      return "int";
+      type = "int";
     } else if (L == "int*" && R == "int") {
-      return "int*";
+      type = "int*";
     } else if (L == "int" && R == "int*") {
       throw string("TYPE ERROR: cannot subtract int* from int");
     } else {// (L == "int*" && R == "int*") {
-      return "int";
+      type = "int";
     }
   }
   
   if (node->rule == "dcl type ID") {
-    return getType(node->children[1], topSymbolTable, currentProcedure);
+    type = getType(node->children[1], topSymbolTable, currentProcedure);
   }
 
-  throw string("ERROR: cannot be typed at " + node->rule);
+  if (type != "") {
+    node->type = type;
+    return type;
+  } else {
+    throw string("ERROR: cannot be typed at " + node->rule);
+  }
 }
 
 // assert well typed for expressions with no type (statements and tests)
@@ -535,8 +542,23 @@ void printSymbolTable(TopSymbolTable &topSymbolTable) {
   }
 }
 
+void genPrologue() {
+    ostringstream oss;
+    oss << "lis $4" << endl;
+    oss << ".word 4" << endl;
+    cout << oss.str() << endl;
+}
+
 // Generate the code for the parse tree t.
-void genCode(tree *t) {
+void genCode(tree *t, TopSymbolTable &topSymbolTable) {
+
+  if(t->rule == "main INT WAIN LPAREN dcl COMMA dcl RPAREN LBRACE dcls statements RETURN expr SEMI RBRACE") {
+    genCode(t->children[3], topSymbolTable);
+    genCode(t->children[5], topSymbolTable);
+    genCode(t->children[8], topSymbolTable);
+    genCode(t->children[9], topSymbolTable);
+  }
+
 }
 
 int main() {
@@ -553,7 +575,8 @@ int main() {
     genSymbols(parseTree, topSymbolTable, "GLOBAL");
     printSymbolTable(topSymbolTable);
 
-    genCode(parseTree);
+
+    genCode(parseTree, topSymbolTable);
 
 
   } catch(string msg) {
