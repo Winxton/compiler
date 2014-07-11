@@ -56,18 +56,18 @@ string TypeChecker::getProcedureName(tree *t) {
   }
 }
 
-void TypeChecker::populateArgList(tree *t, TopSymbolTable &topSymbolTable, string currentProcedure, vector<string> &argList) {
+void TypeChecker::populateArgList(tree *t, string currentProcedure, vector<string> &argList) {
 
   if (t->rule == "arglist expr") 
   {
-    string exprType = getType(t->children[0], topSymbolTable, currentProcedure);
+    string exprType = getType(t->children[0], currentProcedure);
     argList.push_back(exprType);
   } 
   else if (t->rule == "arglist expr COMMA arglist") 
   {
-    string exprType = getType(t->children[0], topSymbolTable, currentProcedure);
+    string exprType = getType(t->children[0], currentProcedure);
     argList.push_back(exprType);
-    populateArgList(t->children[2], topSymbolTable, currentProcedure, argList);
+    populateArgList(t->children[2], currentProcedure, argList);
   }
   else {
     throw string("ERROR: Could not parse Arguments: " + t->rule);
@@ -75,13 +75,13 @@ void TypeChecker::populateArgList(tree *t, TopSymbolTable &topSymbolTable, strin
 }
 
 // gets the type of a node, or throws error if incorrect
-string TypeChecker::getType(tree *node, TopSymbolTable &topSymbolTable, string currentProcedure) {
+string TypeChecker::getType(tree *node, string currentProcedure) {
   string type = "";
 
   // Literals and identifiers
 
   if (node->tokens[0] == "ID") {
-    type = topSymbolTable[currentProcedure].second[node->tokens[1]];
+    type = SymbolTable::getInstance()->getType(currentProcedure, node->tokens[1]);
   }
 
   if (node->tokens[0] == "NUM") {
@@ -101,17 +101,17 @@ string TypeChecker::getType(tree *node, TopSymbolTable &topSymbolTable, string c
     || node->rule == "factor NUM" 
     || node->rule == "factor NULL")
   {
-    type = getType(node->children[0], topSymbolTable, currentProcedure);
+    type = getType(node->children[0], currentProcedure);
   }
 
   // The type of a factor deriving LPAREN expr RPAREN is the same as the type of the expr.
   if (node->rule == "factor LPAREN expr RPAREN") {
-    type = getType(node->children[1], topSymbolTable, currentProcedure); // expr
+    type = getType(node->children[1], currentProcedure); // expr
   }
 
   // The type of a factor deriving AMP lvalue is int*. The type of the derived lvalue (i.e. the one preceded by AMP) must be int.
   if (node->rule == "factor AMP lvalue") {
-    string LvalueType = getType(node->children[1], topSymbolTable, currentProcedure);
+    string LvalueType = getType(node->children[1], currentProcedure);
     if (LvalueType != "int") throw string("ERROR: & must be used on int");
     else type = "int*";
   }
@@ -119,7 +119,7 @@ string TypeChecker::getType(tree *node, TopSymbolTable &topSymbolTable, string c
   // The type of a factor deriving NEW INT LBRACK expr RBRACK is int*. The type of the derived expr must be int.
   if (node->rule == "factor NEW INT LBRACK expr RBRACK") {
     // The type of the derived expr must be int.
-    string exprType = getType(node->children[3], topSymbolTable, currentProcedure);
+    string exprType = getType(node->children[3], currentProcedure);
     
     if (exprType != "int") 
       throw string("ERROR: new [] must use int as parameter, " + exprType + " given");
@@ -133,7 +133,7 @@ string TypeChecker::getType(tree *node, TopSymbolTable &topSymbolTable, string c
   if (node->rule == "factor ID LPAREN RPAREN") {
     string funcName = node->children[0]->tokens[1];
 
-    if (topSymbolTable[funcName].first.size() != 0) 
+    if (SymbolTable::getInstance()->getSignature(funcName).size() != 0)
       throw string("ERROR: Function takes in 0 parameters");
 
     type = "int";
@@ -148,9 +148,9 @@ string TypeChecker::getType(tree *node, TopSymbolTable &topSymbolTable, string c
   if (node->rule == "factor ID LPAREN arglist RPAREN") {
 
     vector<string> argTypeList;
-    populateArgList(node->children[2], topSymbolTable, currentProcedure, argTypeList);
+    populateArgList(node->children[2], currentProcedure, argTypeList);
     string funcName = node->children[0]->tokens[1];
-    vector<string> &functionSignature = topSymbolTable[funcName].first;
+    vector<string> &functionSignature = SymbolTable::getInstance()->getSignature(funcName);
 
     if (argTypeList.size() != functionSignature.size()) throw string("ERROR: Invalid number of arguments");
 
@@ -173,7 +173,7 @@ string TypeChecker::getType(tree *node, TopSymbolTable &topSymbolTable, string c
   // The type of the derived factor (i.e. the one preceded by STAR) must be int*.
   if (node->rule == "lvalue STAR factor" || node->rule == "factor STAR factor") 
   {
-    string factorType = getType(node->children[1], topSymbolTable, currentProcedure);
+    string factorType = getType(node->children[1], currentProcedure);
 
     if (factorType == "int") {
       throw string("TYPE ERROR: cannot deference an int");
@@ -185,15 +185,15 @@ string TypeChecker::getType(tree *node, TopSymbolTable &topSymbolTable, string c
   
   // The type of an lvalue deriving LPAREN lvalue RPAREN is the same as the type of the derived lvalue.
   if (node->rule == "lvalue LPAREN lvalue RPAREN") {
-    type = getType(node->children[1], topSymbolTable, currentProcedure);
+    type = getType(node->children[1], currentProcedure);
   }
 
   // The type of a term directly deriving anything other than just factor is int.
   // The term and factor directly derived from such a term must have type int.
   if (node->rule == "term term STAR factor" || node->rule == "term term SLASH factor" || node->rule == "term term PCT factor") 
   {
-    if (getType(node->children[0], topSymbolTable, currentProcedure) != "int"
-      || getType(node->children[2], topSymbolTable, currentProcedure) != "int") 
+    if (getType(node->children[0], currentProcedure) != "int"
+      || getType(node->children[2], currentProcedure) != "int") 
       {
         string op = node->children[1]->tokens[1];
         throw string("ERROR: invalid operation: " + op + " cannot be used with int* " + " in " + currentProcedure);
@@ -209,8 +209,8 @@ string TypeChecker::getType(tree *node, TopSymbolTable &topSymbolTable, string c
   The derived expr may have type int and the derived term may have type int*, in which case the type of the expr deriving them is int*.
   */
   if (node->rule == "expr expr PLUS term") {
-    string L = getType(node->children[0], topSymbolTable, currentProcedure); // expr
-    string R = getType(node->children[2], topSymbolTable, currentProcedure); // term
+    string L = getType(node->children[0], currentProcedure); // expr
+    string R = getType(node->children[2], currentProcedure); // term
     if (L == "int" && R == "int") {
       type = "int";
     } else if (L == "int*" && R == "int") {
@@ -228,8 +228,8 @@ string TypeChecker::getType(tree *node, TopSymbolTable &topSymbolTable, string c
   The derived expr and the derived term may both have type int*, in which case the type of the expr deriving them is int.
   */
   if (node->rule == "expr expr MINUS term") {
-    string L = getType(node->children[0], topSymbolTable, currentProcedure); // expr
-    string R = getType(node->children[2], topSymbolTable, currentProcedure); // term
+    string L = getType(node->children[0], currentProcedure); // expr
+    string R = getType(node->children[2], currentProcedure); // term
     if (L == "int" && R == "int") {
       type = "int";
     } else if (L == "int*" && R == "int") {
@@ -242,7 +242,7 @@ string TypeChecker::getType(tree *node, TopSymbolTable &topSymbolTable, string c
   }
   
   if (node->rule == "dcl type ID") {
-    type = getType(node->children[1], topSymbolTable, currentProcedure);
+    type = getType(node->children[1], currentProcedure);
   }
 
   if (type != "") {
@@ -257,7 +257,7 @@ string TypeChecker::getType(tree *node, TopSymbolTable &topSymbolTable, string c
 // assert well typed for expressions with no type (statements and tests)
 // These are program elements that do not themselves have types, 
 // but demand that some of their subelements be given particular types
-void TypeChecker::assertWellTyped(const tree *node, TopSymbolTable &topSymbolTable, string currentProcedure) {
+void TypeChecker::assertWellTyped(const tree *node, string currentProcedure) {
   /*
   // RULES 
   The second dcl in the sequence directly derived from procedure must derive a type that derives INT.
@@ -285,13 +285,13 @@ void TypeChecker::assertWellTyped(const tree *node, TopSymbolTable &topSymbolTab
   // declarations
 
   if (node->rule == "dcls dcls dcl BECOMES NUM SEMI") {
-    if (getType(node->children[1], topSymbolTable, currentProcedure) != "int") {
+    if (getType(node->children[1], currentProcedure) != "int") {
       throw string("ERROR: must assign number to int, NUM given");
     }
   }
 
   if (node->rule == "dcls dcls dcl BECOMES NULL SEMI") {
-    if (getType(node->children[1], topSymbolTable, currentProcedure) != "int*") {
+    if (getType(node->children[1], currentProcedure) != "int*") {
       throw string("ERROR: must assign number to int, NULL given");
     }
   }
@@ -305,8 +305,8 @@ void TypeChecker::assertWellTyped(const tree *node, TopSymbolTable &topSymbolTab
     || node->rule == "test expr GT expr") 
   {
       // get type does not return error ->  well typed
-      string L = getType(node->children[0], topSymbolTable, currentProcedure);
-      string R = getType(node->children[2], topSymbolTable, currentProcedure);
+      string L = getType(node->children[0], currentProcedure);
+      string R = getType(node->children[2], currentProcedure);
       if (L != R) {
         throw string("ERROR: comparison between " + L + " and " + R);
       }
@@ -315,21 +315,21 @@ void TypeChecker::assertWellTyped(const tree *node, TopSymbolTable &topSymbolTab
   if (node->rule == "main INT WAIN LPAREN dcl COMMA dcl RPAREN LBRACE dcls statements RETURN expr SEMI RBRACE") {
     currentProcedure = "wain";
 
-    string second = getType(node->children[5], topSymbolTable, currentProcedure); // second parameter in wain
+    string second = getType(node->children[5], currentProcedure); // second parameter in wain
     if (second != "int") throw string("ERROR: wain must take int as second argument");
 
-    //assertWellTyped(node->children[9], topSymbolTable, currentProcedure); // statements
+    //assertWellTyped(node->children[9], currentProcedure); // statements
 
-    string returnValue = getType(node->children[11], topSymbolTable, currentProcedure); // return value
+    string returnValue = getType(node->children[11], currentProcedure); // return value
     if (returnValue != "int")  throw string("ERROR: wain must return int");
   }
 
   if (node->rule == "procedure INT ID LPAREN params RPAREN LBRACE dcls statements RETURN expr SEMI RBRACE") {
     currentProcedure = node->children[1]->tokens[1];
 
-    //assertWellTyped(node->children[7], topSymbolTable, currentProcedure); // statements
+    //assertWellTyped(node->children[7], currentProcedure); // statements
 
-    string returnValue = getType(node->children[9], topSymbolTable, currentProcedure); // return value (expr)
+    string returnValue = getType(node->children[9], currentProcedure); // return value (expr)
     if (returnValue != "int"){
       string procedureName = node->children[1]->tokens[1];
       throw string("ERROR: procedure" + procedureName + " must return int");
@@ -338,8 +338,8 @@ void TypeChecker::assertWellTyped(const tree *node, TopSymbolTable &topSymbolTab
 
   if (node->rule == "statement lvalue BECOMES expr SEMI") {
     // get type does not return error ->  well typed
-    string L = getType(node->children[0], topSymbolTable, currentProcedure);
-    string R = getType(node->children[2], topSymbolTable, currentProcedure);
+    string L = getType(node->children[0], currentProcedure);
+    string R = getType(node->children[2], currentProcedure);
     if (L != R) {
       throw string("ERROR: cannot assign " + R + " to variable of type " + L);
     }
@@ -347,14 +347,14 @@ void TypeChecker::assertWellTyped(const tree *node, TopSymbolTable &topSymbolTab
 
   if (node->rule == "statement PRINTLN LPAREN expr RPAREN SEMI") 
   {
-    string exprType = getType(node->children[2], topSymbolTable, currentProcedure); // expr
+    string exprType = getType(node->children[2], currentProcedure); // expr
     if (exprType != "int") {
       throw string("ERROR: println must use int as parameter, " + exprType + " given");
     }
   }
 
   if (node->rule == "statement DELETE LBRACK RBRACK expr SEMI") {
-    string exprType = getType(node->children[3], topSymbolTable, currentProcedure); // expr
+    string exprType = getType(node->children[3], currentProcedure); // expr
     if (exprType != "int*") {
       throw string("ERROR: delete must use int* as parameter, " + exprType + " given");
     }
@@ -362,7 +362,7 @@ void TypeChecker::assertWellTyped(const tree *node, TopSymbolTable &topSymbolTab
 }
 
 // Compute symbols defined in t.
-void TypeChecker::genSymbols(tree *t, TopSymbolTable &topSymbolTable, string currentProcedure) {
+void TypeChecker::genSymbols(tree *t, string currentProcedure) {
 
   // rule is a declaration of a variable
   if (t->rule == "dcl type ID") 
@@ -370,13 +370,13 @@ void TypeChecker::genSymbols(tree *t, TopSymbolTable &topSymbolTable, string cur
       pair<string, string> nameType = getNameAndType(t);
 
       // procedure with map already exists
-      if (topSymbolTable.count(currentProcedure)) {
+      if (SymbolTable::getInstance()->hasProcedure(currentProcedure)) {
         
         // symbol already exists
-        if (topSymbolTable[currentProcedure].second.count(nameType.first)) {
+        if (SymbolTable::getInstance()->hasSymbolAtProcedure(currentProcedure, nameType.first)) {
           throw string("ERROR: duplicate declaration of "+nameType.first + " in function: " + currentProcedure);
         } else {
-          topSymbolTable[currentProcedure].second[nameType.first] = nameType.second;
+          SymbolTable::getInstance()->setSymbolType(currentProcedure, nameType.first, nameType.second);
         }
         
       // procedure does not exist
@@ -389,7 +389,7 @@ void TypeChecker::genSymbols(tree *t, TopSymbolTable &topSymbolTable, string cur
       // name of the id ( ID id_name )
       string idName = t->children[0]->tokens[1];
       // variable has not been declared
-      if (topSymbolTable[currentProcedure].second.count(idName) == 0) {
+      if (!SymbolTable::getInstance()->hasSymbolAtProcedure(currentProcedure, idName)) {
         throw string("ERROR: variable not declared: " + idName);
       }
   }
@@ -397,11 +397,11 @@ void TypeChecker::genSymbols(tree *t, TopSymbolTable &topSymbolTable, string cur
   else if (t->rule == "factor ID LPAREN RPAREN" || t->rule == "factor ID LPAREN arglist RPAREN") {
     string procName = t->children[0]->tokens[1];
     // variable has not been declared
-    if (topSymbolTable.count(procName) == 0) {
+    if (!SymbolTable::getInstance()->hasProcedure(procName)) {
       throw string("ERROR: procedure not declared: " + procName);
     }
     // there exists a variable with the same name in the current scope
-    if (topSymbolTable[currentProcedure].second.count(procName) != 0) {
+    if (SymbolTable::getInstance()->hasSymbolAtProcedure(currentProcedure, procName)) {
       throw string("ERROR: variable not a function: " + procName);
     }
   }
@@ -427,49 +427,24 @@ void TypeChecker::genSymbols(tree *t, TopSymbolTable &topSymbolTable, string cur
   {
 
     // declaration of a procedure that ALREADY EXISTS - ERROR
-    if (topSymbolTable.count(currentProcedure) && currentProcedure != "GLOBAL") {
+    if (SymbolTable::getInstance()->hasProcedure(currentProcedure) && currentProcedure != "GLOBAL") {
       throw string("ERROR: Duplicate procedure declaration of " + currentProcedure);
 
     } else if (currentProcedure != "GLOBAL") {
-        SignatureSymbolTablePair signatureSymbolTable;
 
-        map<string, string> symbolTableMap;
-        signatureSymbolTable.first = signature;
-        signatureSymbolTable.second = symbolTableMap;
-
-        topSymbolTable[currentProcedure] = signatureSymbolTable;
+        SignatureInnerMapPair innerPair;
+        InnerSymbolMap innerMap;
+        innerPair.first = signature;
+        innerPair.second = innerMap;
+        SymbolTable::getInstance()->setProcedure(currentProcedure, innerPair);
     }
   }
 
   for (vector<tree*>::iterator it = t->children.begin(); it != t->children.end(); it++) 
   {
-    genSymbols(*it, topSymbolTable, currentProcedure);
+    genSymbols(*it, currentProcedure);
   }
 
   // TYPECHECK
-  assertWellTyped(t, topSymbolTable, currentProcedure);
-}
-
-void TypeChecker::printSymbolTable(TopSymbolTable &topSymbolTable) {
-  // print symbol table
-  // iterate through procedures
-  for (TopSymbolTable::iterator it = topSymbolTable.begin(); it!= topSymbolTable.end(); it++) {
-    if (it != topSymbolTable.begin()) cerr << endl;
-
-    string procedure = it->first;
-    cerr << procedure;
-
-    SignatureSymbolTablePair &sigSymTabPair = topSymbolTable[procedure];
-    for (vector<string>::iterator it = sigSymTabPair.first.begin(); it != sigSymTabPair.first.end(); it++) {
-      cerr << " " << *it;
-    }
-    cerr << endl;
-
-    for (map<string, string>::iterator it2 = sigSymTabPair.second.begin(); 
-      it2!= sigSymTabPair.second.end(); 
-      it2++) {
-
-      cerr << it2->first << " " << it2->second << endl;
-    }
-  }
+  assertWellTyped(t, currentProcedure);
 }

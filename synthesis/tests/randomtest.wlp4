@@ -1,5 +1,7 @@
 
 int test(int c) {
+	int a = 0;
+	c = a + b;
 	return c;
 }
 

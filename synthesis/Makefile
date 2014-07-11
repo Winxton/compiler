@@ -2,7 +2,7 @@ CXX = g++
 CXXFLAGS = -g -MMD
 
 EXEC = wlp4gen
-OBJECTS = wlp4gen.o typechecker.o codegen.o
+OBJECTS = wlp4gen.o typechecker.o codegen.o symboltable.o
 DEPENDS = ${OBJECTS:.o=.d}
 
 ${EXEC}: ${OBJECTS}

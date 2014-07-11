@@ -5,9 +5,9 @@
 
 class CodeGen {
 public:
-	static void genCode(tree *t, TopSymbolTable &topSymbolTable);
+	static void genCode(tree *t);
 private:
-	static void _genCode(tree *t, TopSymbolTable &topSymbolTable);
+	static void _genCode(tree *t);
 	static void _genEpilogue();
 	static void _genPrologue();
 };

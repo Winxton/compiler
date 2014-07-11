@@ -67,11 +67,10 @@ int main() {
     parseTree = readParse("start");
 
     // populate the symbol table and do precompile type check
-    TopSymbolTable topSymbolTable;
-    TypeChecker::genSymbols(parseTree, topSymbolTable, "GLOBAL");
-    //TypeChecker::printSymbolTable(topSymbolTable);
+    TypeChecker::genSymbols(parseTree, "GLOBAL");
+    SymbolTable::getInstance()->print();
 
-    CodeGen::genCode(parseTree, topSymbolTable);
+    CodeGen::genCode(parseTree);
 
   } catch(string msg) {
     cerr << msg << endl;

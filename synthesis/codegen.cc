@@ -29,26 +29,26 @@ void CodeGen::_genEpilogue() {
 }
 
 // Generate the code for the parse tree t.
-void CodeGen::genCode(tree *t, TopSymbolTable &topSymbolTable) {
+void CodeGen::genCode(tree *t) {
     // generate the code
     _genPrologue();
 
-    
+
 
     //start BOF procedures EOF
-    _genCode(t->children[1], topSymbolTable);
+    _genCode(t->children[1]);
     _genEpilogue();
 }
 
-void CodeGen::_genCode(tree *t, TopSymbolTable &topSymbolTable) {
+void CodeGen::_genCode(tree *t) {
     if(t->rule == "procedures main") {
-        genCode(t->children[0], topSymbolTable);
+        genCode(t->children[0]);
     }
 
     if(t->rule == "main INT WAIN LPAREN dcl COMMA dcl RPAREN LBRACE dcls statements RETURN expr SEMI RBRACE") {
-        genCode(t->children[8], topSymbolTable); // dcls
-        genCode(t->children[9], topSymbolTable); // statements
-        genCode(t->children[11], topSymbolTable); // expr
+        genCode(t->children[8]); // dcls
+        genCode(t->children[9]); // statements
+        genCode(t->children[11]); // expr
     }
 
     // if(t->rule == "dcls") {}
@@ -60,15 +60,15 @@ void CodeGen::_genCode(tree *t, TopSymbolTable &topSymbolTable) {
     }
 
     if(t->rule == "expr term") {
-        genCode(t->children[0], topSymbolTable);
+        genCode(t->children[0]);
     }
 
     if(t->rule == "term factor") {
-        genCode(t->children[0], topSymbolTable);
+        genCode(t->children[0]);
     }
 
     if(t->rule == "term factor") {
-        genCode(t->children[0], topSymbolTable);
+        genCode(t->children[0]);
     }
 
     if(t->rule == "type INT") {
