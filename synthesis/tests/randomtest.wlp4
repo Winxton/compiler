@@ -1,4 +1,9 @@
 
+int test(int c) {
+	return c;
+}
+
 int wain(int a, int b) { 
-return a;
+	int i = 0;
+	return a;
 }
