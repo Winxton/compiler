@@ -54,6 +54,7 @@ std::vector<std::string> &SymbolTable::getSignature(std::string procedure) {
 }
 
 void SymbolTable::print() {
+  cerr << "--- SYMBOL TABLE ----" << endl;
   // print symbol table
   // iterate through procedures
   for (ProcedureTable::iterator it = symbolTable.begin(); it!= symbolTable.end(); it++) {
@@ -73,4 +74,6 @@ void SymbolTable::print() {
       cerr << it2->first << " " << it2->second.first << endl;
     }
   }
+  cerr << "--- END SYMBOL TABLE ----" << endl;
+  cerr << endl << endl;
 }

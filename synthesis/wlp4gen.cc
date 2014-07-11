@@ -70,7 +70,8 @@ int main() {
     TypeChecker::genSymbols(parseTree, "GLOBAL");
     SymbolTable::getInstance()->print();
 
-    CodeGen::genCode(parseTree);
+    CodeGen generator;
+    generator.genCode(parseTree);
 
   } catch(string msg) {
     cerr << msg << endl;

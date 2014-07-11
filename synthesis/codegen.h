@@ -5,11 +5,15 @@
 
 class CodeGen {
 public:
-	static void genCode(tree *t);
+	CodeGen() : curStackPtr(0){}
+	void genCode(tree *t);
 private:
-	static void _genCode(tree *t);
-	static void _genEpilogue();
-	static void _genPrologue();
+	int curStackPtr;
+	void _genCode(tree *t, std::string currentProcedure);
+	void _genEpilogue();
+	void _genPrologue();
+	void pushToStack(std::string currentProcedure, int reg, std::string symbolId);
+	void popToRegister();
 };
 
 #endif

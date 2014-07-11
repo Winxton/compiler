@@ -5,6 +5,15 @@
 #include <vector>
 #include <map>
 
+// Data structure for storing the parse tree.
+struct tree {
+    std::string rule;
+    std::string type;
+    std::vector<std::string> tokens;
+    std::vector<tree*> children;
+    ~tree() { for(int i=0; i<children.size(); i++) delete children[i]; }
+};
+
 // MAP: procedure name -> pair(signature , map <symbol, pair(type, offset) >
 typedef std::pair<std::string, int> TypeOffsetPair;
 typedef std::map<std::string, TypeOffsetPair > InnerSymbolMap;
