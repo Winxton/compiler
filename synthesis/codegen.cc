@@ -8,6 +8,8 @@ void CodeGen::_genPrologue() {
     cout << "; prologue" << endl;
     cout << "lis $4" << endl;
     cout << ".word 4" << endl;
+    cout << "lis $11" << endl;
+    cout << ".word 1" << endl;
     cout << "sub $29, $30, $4" << " ; $29 points to bottom of stack frame" << endl;
     cout << endl;
 }
@@ -30,17 +32,21 @@ void CodeGen::genCode(tree *t) {
     _genEpilogue();
 }
 
-void CodeGen::pushToStack(string currentProcedure, int reg, string symbolId) {
+void CodeGen::pushToStack(int reg, string symbolId) {
+    cout << "; -- push -- " << "ptr: " << curStackPtr << endl;
     cout << "sw $" << reg << ", -4($30)" << " ; store " << symbolId << " on stack" << endl;
-    cout << "sub $30, $30, $4" << endl;
-
-    SymbolTable::getInstance()->setSymbolOffset(currentProcedure, symbolId, curStackPtr);
+    cout << "sub $30, $30, $4" << " ; decrement stack pointer "<<endl;
+    cout << endl;
     // update pointer
     curStackPtr -= 4;
 }
 
-void CodeGen::popToRegister() {
-
+void CodeGen::popToRegister(int reg) {
+    cout << "; -- pop -- " << "ptr: " << curStackPtr << endl;
+    cout << "lw $" << reg << ", 0($30)" << " ; pop from stack to register " << reg <<  endl;
+    cout << "add $30, $30, $4" << "; increment stack pointer" << endl;
+    cout << endl;
+    curStackPtr += 4;
 }
 
 int stringToInt(string s) {
@@ -61,9 +67,12 @@ void CodeGen::_genCode(tree *t, string currentProcedure) {
         string symbolB = t->children[5]->children[1]->tokens[1];
 
         // push $1
-        pushToStack(currentProcedure, 1, symbolA);
+        SymbolTable::getInstance()->setSymbolOffset(currentProcedure, symbolA, curStackPtr);
+        pushToStack(1, symbolA);
         // push $2
-        pushToStack(currentProcedure, 2, symbolB);
+        SymbolTable::getInstance()->setSymbolOffset(currentProcedure, symbolB, curStackPtr);
+        pushToStack(2, symbolB);
+        cout << endl;
 
         _genCode(t->children[8], currentProcedure); // dcls
         _genCode(t->children[9], currentProcedure); // statements
@@ -85,7 +94,7 @@ void CodeGen::_genCode(tree *t, string currentProcedure) {
         cout << ".word " << val << endl;
 
         // push $5 onto the stack
-        pushToStack(currentProcedure, 5, symbol);
+        pushToStack(5, symbol);
     }
 
     if (t->rule == "dcl type ID") {
@@ -115,12 +124,69 @@ void CodeGen::_genCode(tree *t, string currentProcedure) {
         int offset = SymbolTable::getInstance()->getOffset(currentProcedure, symbol);
         
         // return to $3
-        cout << "; " << t->rule << endl;
+        cout << "; " << "Reached an ID(" << symbol << "), output to $3" << endl;
         cout << "lw $3, " << offset << "($29)" << endl;
     }
 
-    if(t->rule == "type INT") {
+    if(t->rule == "factor LPAREN expr RPAREN") {
+        _genCode(t->children[1], currentProcedure);
     }
 
+    if(t->rule == "type INT") {}
 
+    if(t->rule == "expr expr PLUS term") {
+        _genCode(t->children[0], currentProcedure); // generate code for the expr
+        pushToStack(3, "expr1");
+        _genCode(t->children[2], currentProcedure); // generate code for the term
+        
+        string LType = t->children[0]->type;
+        string RType = t->children[2]->type;
+
+        // $5 has expr, $3 has term
+        popToRegister(5);
+
+        if (LType == "int*" && RType == "int") {
+            cout << "; add int* with int" << endl;
+            cout << "mult $3, $4" << endl;
+            cout << "mflo $3" << " ; $3 <- 4*$3"<< endl;
+            cout << "add $3, $3, $5" << endl;
+        }
+        else if (LType == "int" && RType == "int*") {
+            cout << "; add int with int*" << endl;
+            cout << "mult $5, $4" << endl;
+            cout << "mflo $5" << "$5 <- 4*$5" <<endl;
+            cout << "add $3, $3, $5";
+        }
+        else { //(LType == "int" && RType == "int") {
+            cout << "add $3, $5, $3" << endl;
+        }
+    }
+    if(t->rule == "expr expr MINUS term") {
+        _genCode(t->children[0], currentProcedure); // generate code for the expr
+        pushToStack(3, "expr1");
+        _genCode(t->children[2], currentProcedure); // generate code for the term
+        popToRegister(5);
+
+        // $5 has expr, $3 has term
+        cout << "sub $3, $5, $3" << endl;
+    }
+    if(t->rule == "term term STAR factor") {
+        _genCode(t->children[0], currentProcedure); // generate code for the expr
+        pushToStack(3, "expr1");
+        _genCode(t->children[2], currentProcedure); // generate code for the term
+        popToRegister(5);
+
+        cout << "mult $5, $3" << endl;
+        cout << "mflo $3" << endl;
+    }
+    if(t->rule == "term term SLASH factor") {
+
+    }
+    if(t->rule == "term term PCT factor") {
+
+    }
+    if(t->rule == "factor NUM") {
+        
+    }
+    
 }

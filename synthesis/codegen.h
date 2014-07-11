@@ -12,8 +12,8 @@ private:
 	void _genCode(tree *t, std::string currentProcedure);
 	void _genEpilogue();
 	void _genPrologue();
-	void pushToStack(std::string currentProcedure, int reg, std::string symbolId);
-	void popToRegister();
+	void pushToStack(int reg, std::string symbolId);
+	void popToRegister(int reg);
 };
 
 #endif
