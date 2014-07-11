@@ -84,6 +84,8 @@ void CodeGen::_genCode(tree *t, string currentProcedure) {
     // if(t->rule == "statements") {}
 
     if (t->rule == "dcls dcls dcl BECOMES NUM SEMI") {
+        _genCode(t->children[0], currentProcedure);
+
         tree *dcl = t->children[1]; // dcl type ID
         string symbol = dcl->children[1]->tokens[1];
         string val = t->children[3]->tokens[1];
@@ -94,6 +96,7 @@ void CodeGen::_genCode(tree *t, string currentProcedure) {
         cout << ".word " << val << endl;
 
         // push $5 onto the stack
+        SymbolTable::getInstance()->setSymbolOffset(currentProcedure, symbol, curStackPtr);
         pushToStack(5, symbol);
     }
 
@@ -125,7 +128,7 @@ void CodeGen::_genCode(tree *t, string currentProcedure) {
         
         // return to $3
         cout << "; " << "Reached an ID(" << symbol << "), output to $3" << endl;
-        cout << "lw $3, " << offset << "($29)" << endl;
+        cout << "lw $3, " << offset << "($29)" << " ; pop " << symbol << endl;
     }
 
     if(t->rule == "factor LPAREN expr RPAREN") {
