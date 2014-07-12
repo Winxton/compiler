@@ -6,6 +6,7 @@ using namespace std;
 void CodeGen::_genPrologue() {
     // store parameters of wain
     cout << "; prologue" << endl;
+    cout << ".import print" << endl;
     cout << "lis $4" << endl;
     cout << ".word 4" << endl;
     cout << "lis $11" << endl;
@@ -82,6 +83,27 @@ void CodeGen::_genCode(tree *t, string currentProcedure) {
     // if(t->rule == "dcls") {}
 
     // if(t->rule == "statements") {}
+
+    if(t->rule == "statements statements statement") {
+      _genCode(t->children[0], currentProcedure);
+      _genCode(t->children[1], currentProcedure);
+    }
+
+    if(t->rule == "statements statement") {
+      _genCode(t->children[0], currentProcedure);
+    }
+
+    if(t->rule == "statement PRINTLN LPAREN expr RPAREN SEMI") {
+      _genCode(t->children[2], currentProcedure); // code for expr
+      cout << "; CALL PRINT (clobbers $1, assume not required to keep orig value) " << endl;
+      cout << "add $1, $3, $0" << endl;
+      pushToStack(31, " stack pointer "); // store end of program pointer
+      cout << "lis $5" << endl;
+      cout << ".word print" << endl;
+      cout << "jalr $5" << endl;
+      popToRegister(31); // restore end of program pointer
+    }
+
 
     if (t->rule == "dcls dcls dcl BECOMES NUM SEMI") {
         _genCode(t->children[0], currentProcedure);
