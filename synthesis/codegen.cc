@@ -34,8 +34,8 @@ void CodeGen::genCode(tree *t) {
 }
 
 void CodeGen::pushToStack(int reg, string symbolId) {
-    cout << "; -- push -- " << "ptr: " << curStackPtr << endl;
-    cout << "sw $" << reg << ", -4($30)" << " ; store " << symbolId << " on stack" << endl;
+    cout << "; PUSH " << symbolId << " to stack" << ", ptr: " << curStackPtr << endl;
+    cout << "sw $" << reg << ", -4($30)" << endl;
     cout << "sub $30, $30, $4" << " ; decrement stack pointer "<<endl;
     cout << endl;
     // update pointer
@@ -43,8 +43,8 @@ void CodeGen::pushToStack(int reg, string symbolId) {
 }
 
 void CodeGen::popToRegister(int reg) {
-    cout << "; -- pop -- " << "ptr: " << curStackPtr << endl;
-    cout << "lw $" << reg << ", 0($30)" << " ; pop from stack to register " << reg <<  endl;
+    cout << "; POP to register " << reg << ", ptr: " << curStackPtr << endl;
+    cout << "lw $" << reg << ", 0($30)" << endl;
     cout << "add $30, $30, $4" << "; increment stack pointer" << endl;
     cout << endl;
     curStackPtr += 4;
@@ -103,8 +103,8 @@ void CodeGen::_genCode(tree *t, string currentProcedure) {
       cout << "jalr $5" << endl;
       popToRegister(31); // restore end of program pointer
     }
-
-
+    
+    // set variable to int
     if (t->rule == "dcls dcls dcl BECOMES NUM SEMI") {
         _genCode(t->children[0], currentProcedure);
 
@@ -157,7 +157,7 @@ void CodeGen::_genCode(tree *t, string currentProcedure) {
         
         // return to $3
         cout << "; " << "Reached an ID(" << symbol << "), output to $3" << endl;
-        cout << "lw $3, " << offset << "($29)" << " ; pop " << symbol << endl;
+        cout << "lw $3, " << offset << "($29)" << " ; load " << symbol << endl;
     }
 
     if(t->rule == "factor LPAREN expr RPAREN") {
@@ -165,6 +165,30 @@ void CodeGen::_genCode(tree *t, string currentProcedure) {
     }
 
     if(t->rule == "type INT") {}
+
+    if (t->rule == "statement lvalue BECOMES expr SEMI") {
+      _genCode(t->children[0], currentProcedure); // lvalue
+      pushToStack(3, "lvalue");
+      _genCode(t->children[2], currentProcedure); // expr
+      popToRegister(5);
+      // lvalue: $5, expr: $3
+      cout << "; Store result of new LVALUE " << t->rule << endl;
+      cout << "sw $3, 0($5)" << endl;
+    }
+
+    if (t->rule == "lvalue ID") {
+      string symbol = t->children[0]->tokens[1];
+      int offset = SymbolTable::getInstance()->getOffset(currentProcedure, symbol);
+      cout << "; get address of lvalue ID(" << symbol << ")" << endl;
+      cout << "lis $3" << endl;
+      cout << ".word " << offset << endl;
+      cout << "add $3, $3, $29" << "; location of symbol" << endl;
+    }
+
+    if (t->rule == "lvalue LPAREN lvalue RPAREN") {
+      cout << "; " << t->rule << endl;
+      _genCode(t->children[1], currentProcedure);
+    }
 
     if(t->rule == "expr expr PLUS term") {
         _genCode(t->children[0], currentProcedure); // generate code for the expr
