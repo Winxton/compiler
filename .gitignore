@@ -1,3 +1,6 @@
 *.o
 *.d
 *.zip
+wlp4scan
+wlp4parse
+wlp4gen
