@@ -57,6 +57,13 @@ int stringToInt(string s) {
     return n;
 }
 
+string intToString(int n) {
+    stringstream oss;
+    oss << n;
+    return oss.str();
+}
+
+
 void CodeGen::_genCode(tree *t, string currentProcedure) {
     if(t->rule == "procedures main") {
         _genCode(t->children[0], currentProcedure);
@@ -172,8 +179,7 @@ void CodeGen::_genCode(tree *t, string currentProcedure) {
       _genCode(t->children[2], currentProcedure); // expr
       popToRegister(5);
       // lvalue: $5, expr: $3
-      cout << "; Store result of new LVALUE " << t->rule << endl;
-      cout << "sw $3, 0($5)" << endl;
+      cout << "sw $3, 0($5)" << "; Store result of new LVALUE " << t->rule << endl;
     }
 
     if (t->rule == "lvalue ID") {
@@ -188,6 +194,101 @@ void CodeGen::_genCode(tree *t, string currentProcedure) {
     if (t->rule == "lvalue LPAREN lvalue RPAREN") {
       cout << "; " << t->rule << endl;
       _genCode(t->children[1], currentProcedure);
+    }
+
+    // TESTS
+    if (t->rule == "test expr LT expr") {
+      _genCode(t->children[0], currentProcedure);
+      pushToStack(3, "test expr1");
+      _genCode(t->children[2], currentProcedure);
+      popToRegister(5);
+      // LHS: $5, RHS: $3
+      cout << "slt $3, $5, $3" << endl;
+    }
+    if (t->rule == "test expr EQ expr") {
+      _genCode(t->children[0], currentProcedure);
+      pushToStack(3, "test expr1");
+      _genCode(t->children[2], currentProcedure);
+      popToRegister(5);
+      // LHS: $5, RHS: $3
+      cout << "slt $6, $5, $3" << endl;
+      cout << "slt $7, $3, $5" << endl;
+      cout << "add $3, $6, $7" << endl;
+      cout << "sub $3, $11, $3" << endl;
+    }
+    if (t->rule == "test expr NE expr") {
+      _genCode(t->children[0], currentProcedure);
+      pushToStack(3, "test expr1");
+      _genCode(t->children[2], currentProcedure);
+      popToRegister(5);
+      // LHS: $5, RHS: $3
+      cout << "slt $6, $5, $3" << endl;
+      cout << "slt $7, $3, $5" << endl;
+      cout << "add $3, $6, $7" << endl;
+    }
+    if (t->rule == "test expr LE expr") {
+      _genCode(t->children[0], currentProcedure);
+      pushToStack(3, "test expr1");
+      _genCode(t->children[2], currentProcedure);
+      popToRegister(5);
+      // LHS: $5, RHS: $3
+      cout << "slt $3, $3, $5" << endl;
+      cout << "sub $3, $11, $3" << endl;
+    }
+    if (t->rule == "test expr GE expr") {
+      _genCode(t->children[0], currentProcedure);
+      pushToStack(3, "test expr1");
+      _genCode(t->children[2], currentProcedure);
+      popToRegister(5);
+      // LHS: $5, RHS: $3
+      cout << "slt $3, $5, $3" << endl;
+      cout << "sub $3, $11, $3" << endl;
+    }
+    if (t->rule == "test expr GT expr") {
+      _genCode(t->children[0], currentProcedure);
+      pushToStack(3, "test expr1");
+      _genCode(t->children[2], currentProcedure);
+      popToRegister(5);
+      // LHS: $5, RHS: $3
+      cout << "slt $3, $3, $5" << endl;
+    }
+    if (t->rule == "statement IF LPAREN test RPAREN LBRACE statements RBRACE ELSE LBRACE statements RBRACE"){
+      string labelCounterStr = intToString(labelCounter);
+      string endLabel = "end" + labelCounterStr;
+      string trueLabel = "true" + labelCounterStr;
+      
+      ++ labelCounter;
+
+      cout << "; IF STATEMENT" << endl;
+      _genCode(t->children[2], currentProcedure);
+      cout << "beq $11, $3, " << trueLabel << endl;
+      // false
+      _genCode(t->children[9], currentProcedure);
+      cout << "beq $0, $0, " << endLabel << endl;
+      // true
+      cout << trueLabel << ":" << endl;
+      _genCode(t->children[5], currentProcedure);
+      // end 
+      cout << endLabel << ":" << endl;
+    }
+    if (t->rule == "statement WHILE LPAREN test RPAREN LBRACE statements RBRACE") {
+      
+      cout << "; WHILE LOOP" << endl;
+      string labelCounterStr = intToString(labelCounter);
+      // label for loop 
+      string loopLabel = "loop" + labelCounterStr; 
+      string endLoopLabel = "endloop" + labelCounterStr;
+
+      ++ labelCounter;
+
+      cout << loopLabel << ":" << endl;
+      cout << "; WHILE LOOP: CODE FOR TEST" << endl;
+      _genCode(t->children[2], currentProcedure);
+      cout << "bne $3, $11, " << endLoopLabel << " ; Test is false, endloop" << endl; // test is false
+      cout << "; WHILE LOOP: CODE FOR STATEMENT" << endl;
+      _genCode(t->children[5], currentProcedure);
+      cout << "beq $0, $0, " << loopLabel << endl;
+      cout << endLoopLabel << ":" << endl;
     }
 
     if(t->rule == "expr expr PLUS term") {
