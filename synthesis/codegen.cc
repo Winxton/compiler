@@ -129,6 +129,44 @@ void CodeGen::_genCode(tree *t, string currentProcedure) {
         pushToStack(5, symbol);
     }
 
+    // set variable to NULL
+    if (t->rule == "dcls dcls dcl BECOMES NULL SEMI") {
+        _genCode(t->children[0], currentProcedure);
+
+        tree *dcl = t->children[1]; // dcl type ID
+        string symbol = dcl->children[1]->tokens[1];
+        string val = t->children[3]->tokens[1];
+        
+        cout << endl;
+        cout << "; CODE: int * " << symbol << " = " << val << endl;
+        cout << "lis $5" << endl;
+        // Use 1 as NULL
+        cout << ".word " << 1 << endl;
+
+        // push $5 onto the stack
+        SymbolTable::getInstance()->setSymbolOffset(currentProcedure, symbol, curStackPtr);
+        pushToStack(5, symbol);
+    }
+    
+    if (t->rule == "factor NULL"){
+        cout << "; Factor NULL" << endl;
+        cout << "lis $3" << endl;
+        cout << ".word 1" << endl;
+    }
+    if (t->rule == "factor AMP lvalue"){
+        // get reference
+        _genCode(t->children[1], currentProcedure);
+    }
+    if (t->rule == "factor STAR factor"){
+        // dereference
+        _genCode(t->children[1], currentProcedure);
+        cout << "lw 0($3)" << endl; 
+    }
+    if (t->rule == "lvalue STAR factor"){
+        // get reference
+        _genCode(t->children[1], currentProcedure);
+    }
+
     if (t->rule == "dcl type ID") {
         //string symbol = t->children[1]->tokens[1];
         // can't do anything here yet!
@@ -172,6 +210,8 @@ void CodeGen::_genCode(tree *t, string currentProcedure) {
     }
 
     if(t->rule == "type INT") {}
+
+    if(t->rule == "type INT STAR") {}
 
     if (t->rule == "statement lvalue BECOMES expr SEMI") {
       _genCode(t->children[0], currentProcedure); // lvalue
@@ -380,5 +420,5 @@ void CodeGen::_genCode(tree *t, string currentProcedure) {
         cout << "div $5, $3" << endl;
         cout << "mfhi $3" << endl;
     }
-    
+
 }
