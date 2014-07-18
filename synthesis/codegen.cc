@@ -6,12 +6,24 @@ using namespace std;
 void CodeGen::_genPrologue() {
     // store parameters of wain
     cout << "; prologue" << endl;
+    cout << ".import init" << endl;
+    cout << ".import new" << endl;
+    cout << ".import delete" << endl;
     cout << ".import print" << endl;
     cout << "lis $4" << endl;
     cout << ".word 4" << endl;
     cout << "lis $11" << endl;
     cout << ".word 1" << endl;
     cout << "sub $29, $30, $4" << " ; $29 points to bottom of stack frame" << endl;
+
+    // call init
+    cout << "; call init" << endl;
+    pushToStack(31, "PC");
+    cout << "lis $5" << endl;
+    cout << ".word init" << endl;
+    cout << "jalr $5" << endl;
+    popToRegister(31);
+    
     cout << endl;
 }
 
@@ -147,6 +159,49 @@ void CodeGen::_genCode(tree *t, string currentProcedure) {
         SymbolTable::getInstance()->setSymbolOffset(currentProcedure, symbol, curStackPtr);
         pushToStack(5, symbol);
     }
+
+    if (t->rule == "factor NEW INT LBRACK expr RBRACK") {
+        cout << "; NEW expr" << endl;
+        _genCode(t->children[3], currentProcedure);
+        cout << "; actual NEW calls" << endl;
+
+        string skipLabel = "skip" +intToString(labelCounter);
+        ++ labelCounter;
+
+        cout << "add $1, $3, $0 ; # of words needed" << endl;
+
+        pushToStack(31, "return ptr");
+        cout << "lis $5" << endl;
+        cout << ".word new" << endl;
+        cout << "jalr $5" << endl;
+        popToRegister(31);
+        // if new returns 0, replace with 0x11
+        cout << "bne $3, $0, " << skipLabel << " ; not 0, skip " << endl;
+        cout << "add $3, $0, $11" << " ; replace result with repr of NULL" << endl;
+        cout << skipLabel << ":" << endl;
+    }
+
+    if (t->rule == "statement DELETE LBRACK RBRACK expr SEMI") {
+        cout << "; DELETE expr" << endl;
+        _genCode(t->children[3], currentProcedure);
+        cout << "; actual DELETE calls " << endl;
+
+        string nullLabel = "null" +intToString(labelCounter);
+        ++ labelCounter;
+        
+        // if expr is NULL, skip DELETE
+        cout << "beq $11, $3, " << nullLabel << " ; addr to deallocate is null(0x01)" << endl;
+
+        cout << "add $1, $0, $3" << "; move ptr to mem to deallocate to $1 for delete subroutine" << endl;
+
+        pushToStack(31, "PC");
+        cout << "lis $5" << endl;
+        cout << ".word delete" << endl;
+        cout << "jalr $5" << endl;
+        popToRegister(31);
+
+        cout << nullLabel << ":" << endl;
+    }
     
     if (t->rule == "factor NULL"){
         cout << "; Factor NULL" << endl;
@@ -158,9 +213,10 @@ void CodeGen::_genCode(tree *t, string currentProcedure) {
         _genCode(t->children[1], currentProcedure);
     }
     if (t->rule == "factor STAR factor"){
-        // dereference
+        cout << "; " << t->rule << endl; 
+        // dereference - factor on RHS is an lvalue
         _genCode(t->children[1], currentProcedure);
-        cout << "lw 0($3)" << endl; 
+        cout << "lw $3, 0($3)" << endl; 
     }
     if (t->rule == "lvalue STAR factor"){
         // get reference
@@ -350,7 +406,7 @@ void CodeGen::_genCode(tree *t, string currentProcedure) {
         else if (LType == "int" && RType == "int*") {
             cout << "; add int with int*" << endl;
             cout << "mult $5, $4" << endl;
-            cout << "mflo $5" << "$5 <- 4*$5" <<endl;
+            cout << "mflo $5" << "; $5 <- 4*$5" <<endl;
             cout << "add $3, $3, $5";
         }
         else { //(LType == "int" && RType == "int") {
