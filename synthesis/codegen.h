@@ -11,7 +11,6 @@ private:
 	int curStackPtr;
 	int labelCounter;
 	void _genCode(tree *t, std::string currentProcedure);
-	void _genEpilogue();
 	void _genPrologue();
 	void pushToStack(int reg, std::string symbolId);
 	void popToRegister(int reg);

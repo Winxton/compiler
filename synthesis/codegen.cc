@@ -27,12 +27,6 @@ void CodeGen::_genPrologue() {
     cout << endl;
 }
 
-void CodeGen::_genEpilogue() {
-    cout << endl << "; Epilogue" << endl;
-    cout << "add $30, $29, $4" << " ; pop everything" << endl;
-    cout << "jr $31" << endl;
-}
-
 // Generate the code for the parse tree t.
 void CodeGen::genCode(tree *t) {
     // generate the code
@@ -42,14 +36,12 @@ void CodeGen::genCode(tree *t) {
     string currentProcedure = "";
     _genCode(t->children[1], currentProcedure);
 
-    _genEpilogue();
 }
 
 void CodeGen::pushToStack(int reg, string symbolId) {
     cout << "; PUSH " << symbolId << " to stack" << ", ptr: " << curStackPtr << endl;
     cout << "sw $" << reg << ", -4($30)" << endl;
     cout << "sub $30, $30, $4" << " ; decrement stack pointer "<<endl;
-    cout << endl;
     // update pointer
     curStackPtr -= 4;
 }
@@ -58,7 +50,6 @@ void CodeGen::popToRegister(int reg) {
     cout << "; POP to register " << reg << ", ptr: " << curStackPtr << endl;
     cout << "lw $" << reg << ", 0($30)" << endl;
     cout << "add $30, $30, $4" << "; increment stack pointer" << endl;
-    cout << endl;
     curStackPtr += 4;
 }
 
@@ -79,8 +70,61 @@ string intToString(int n) {
 void CodeGen::_genCode(tree *t, string currentProcedure) {
     if(t->rule == "procedures main") {
         _genCode(t->children[0], currentProcedure);
+
+        // epilogue
+        cout << endl << "; Epilogue" << endl;
+        cout << "add $30, $29, $4" << " ; pop everything" << endl;
+        cout << "jr $31" << endl;
     }
 
+    if (t->rule == "procedures procedure procedures") {
+        // reverse the orders
+        _genCode(t->children[1], currentProcedure);
+        _genCode(t->children[0], currentProcedure);
+    }
+    
+    //procedure definition
+    if (t->rule == "procedure INT ID LPAREN params RPAREN LBRACE dcls statements RETURN expr SEMI RBRACE") {
+        // label for the procedure
+        string procName = t->children[1]->tokens[1];
+        cout << "; starting definition for function : " << procName << endl;
+        string label = "F" + procName;
+        cout << label << ":" << endl;
+
+        // update stack frame
+        int tempCurStackPtr = curStackPtr;
+        curStackPtr = 0; // reset stack ptr for procedure
+        cout << "sub $29, $30, $4" << endl; // update $29 to just after arguments and before local vars
+
+        // TODO: add # of params to symbol table
+        _genCode(t->children[3], procName); // params
+
+        cout << "; " << procName << " declarations: " << endl;
+        _genCode(t->children[6], procName); // dcls
+
+        _genCode(t->children[7], procName); // statements
+        _genCode(t->children[9], procName); // expr (return)
+
+
+        curStackPtr = tempCurStackPtr; // restore stack ptr
+        cout << "add $30, $29, $4" << " ; restore stack ptr" << endl;
+        cout << "jr $31" << endl;
+    }
+
+    // procedure call with no params
+    if (t->rule == "factor ID LPAREN RPAREN") {
+        string label = "F" + t->children[0]->tokens[1];
+        pushToStack(29, "stack frame");
+        pushToStack(31, "PC");
+
+        cout << "lis $5" << endl;
+        cout << ".word " << label << endl;
+        cout << "jalr $5 " << endl;
+        popToRegister(31);
+        popToRegister(29);
+    }
+
+    // wain declaration
     if(t->rule == "main INT WAIN LPAREN dcl COMMA dcl RPAREN LBRACE dcls statements RETURN expr SEMI RBRACE") {
         currentProcedure = "wain";
         string symbolA = t->children[3]->children[1]->tokens[1];
@@ -92,7 +136,6 @@ void CodeGen::_genCode(tree *t, string currentProcedure) {
         // push $2
         SymbolTable::getInstance()->setSymbolOffset(currentProcedure, symbolB, curStackPtr);
         pushToStack(2, symbolB);
-        cout << endl;
 
         _genCode(t->children[8], currentProcedure); // dcls
         _genCode(t->children[9], currentProcedure); // statements
@@ -100,7 +143,6 @@ void CodeGen::_genCode(tree *t, string currentProcedure) {
     }
 
     // if(t->rule == "dcls") {}
-
     // if(t->rule == "statements") {}
 
     if(t->rule == "statements statements statement") {
@@ -131,8 +173,7 @@ void CodeGen::_genCode(tree *t, string currentProcedure) {
         string symbol = dcl->children[1]->tokens[1];
         string val = t->children[3]->tokens[1];
         
-        cout << endl;
-        cout << "; CODE: int " << symbol << " = " << val << endl;
+        cout << "; dcl: int " << symbol << " = " << val << endl;
         cout << "lis $5" << endl;
         cout << ".word " << val << endl;
 
@@ -149,8 +190,7 @@ void CodeGen::_genCode(tree *t, string currentProcedure) {
         string symbol = dcl->children[1]->tokens[1];
         string val = t->children[3]->tokens[1];
         
-        cout << endl;
-        cout << "; CODE: int * " << symbol << " = " << val << endl;
+        cout << "; dcl: int * " << symbol << " = " << val << endl;
         cout << "lis $5" << endl;
         // Use 1 as NULL
         cout << ".word " << 1 << endl;
@@ -298,8 +338,10 @@ void CodeGen::_genCode(tree *t, string currentProcedure) {
       pushToStack(3, "test expr1");
       _genCode(t->children[2], currentProcedure);
       popToRegister(5);
+      // use slt for int, sltu for int*
+      string slt = t->children[0]->type == "int" ? "slt" : "sltu";
       // LHS: $5, RHS: $3
-      cout << "slt $3, $5, $3" << endl;
+      cout << slt << " $3, $5, $3" << endl;
     }
     if (t->rule == "test expr EQ expr") {
       _genCode(t->children[0], currentProcedure);
@@ -307,8 +349,9 @@ void CodeGen::_genCode(tree *t, string currentProcedure) {
       _genCode(t->children[2], currentProcedure);
       popToRegister(5);
       // LHS: $5, RHS: $3
-      cout << "slt $6, $5, $3" << endl;
-      cout << "slt $7, $3, $5" << endl;
+      string slt = t->children[0]->type == "int" ? "slt" : "sltu";
+      cout << slt << " $6, $5, $3" << endl;
+      cout << slt << " $7, $3, $5" << endl;
       cout << "add $3, $6, $7" << endl;
       cout << "sub $3, $11, $3" << endl;
     }
@@ -318,8 +361,9 @@ void CodeGen::_genCode(tree *t, string currentProcedure) {
       _genCode(t->children[2], currentProcedure);
       popToRegister(5);
       // LHS: $5, RHS: $3
-      cout << "slt $6, $5, $3" << endl;
-      cout << "slt $7, $3, $5" << endl;
+      string slt = t->children[0]->type == "int" ? "slt" : "sltu";
+      cout << slt << " $6, $5, $3" << endl;
+      cout << slt << " $7, $3, $5" << endl;
       cout << "add $3, $6, $7" << endl;
     }
     if (t->rule == "test expr LE expr") {
@@ -328,7 +372,9 @@ void CodeGen::_genCode(tree *t, string currentProcedure) {
       _genCode(t->children[2], currentProcedure);
       popToRegister(5);
       // LHS: $5, RHS: $3
-      cout << "slt $3, $3, $5" << endl;
+      string slt = t->children[0]->type == "int" ? "slt" : "sltu";
+
+      cout << slt << " $3, $3, $5" << endl;
       cout << "sub $3, $11, $3" << endl;
     }
     if (t->rule == "test expr GE expr") {
@@ -337,7 +383,9 @@ void CodeGen::_genCode(tree *t, string currentProcedure) {
       _genCode(t->children[2], currentProcedure);
       popToRegister(5);
       // LHS: $5, RHS: $3
-      cout << "slt $3, $5, $3" << endl;
+      string slt = t->children[0]->type == "int" ? "slt" : "sltu";
+
+      cout << slt << " $3, $5, $3" << endl;
       cout << "sub $3, $11, $3" << endl;
     }
     if (t->rule == "test expr GT expr") {
@@ -345,8 +393,11 @@ void CodeGen::_genCode(tree *t, string currentProcedure) {
       pushToStack(3, "test expr1");
       _genCode(t->children[2], currentProcedure);
       popToRegister(5);
+
       // LHS: $5, RHS: $3
-      cout << "slt $3, $3, $5" << endl;
+      string slt = t->children[0]->type == "int" ? "slt" : "sltu";
+      
+      cout << slt << " $3, $3, $5" << endl;
     }
     if (t->rule == "statement IF LPAREN test RPAREN LBRACE statements RBRACE ELSE LBRACE statements RBRACE"){
       string labelCounterStr = intToString(labelCounter);
