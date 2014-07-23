@@ -53,6 +53,10 @@ std::vector<std::string> &SymbolTable::getSignature(std::string procedure) {
 	return symbolTable[procedure].first;
 }
 
+InnerSymbolMap &SymbolTable::getInnerSymbolMap(std::string procedure) {
+    return symbolTable[procedure].second;
+}
+
 void SymbolTable::print() {
   cerr << "--- SYMBOL TABLE ----" << endl;
   // print symbol table

@@ -22,8 +22,8 @@ typedef std::map<std::string, SignatureInnerMapPair > ProcedureTable;
 
 class SymbolTable {
 	static SymbolTable *instance;
-	ProcedureTable symbolTable;
 public:
+        ProcedureTable symbolTable;
 	static SymbolTable *getInstance();
 	static void cleanup();
 
@@ -36,6 +36,7 @@ public:
 	void setProcedure(std::string procedure, SignatureInnerMapPair innerPair);
 
 	std::vector<std::string> &getSignature(std::string procedure);
+        InnerSymbolMap &getInnerSymbolMap(std::string procedure);
 	std::string getType(std::string procedure, std::string symbolName);
 	int getOffset(std::string procedure, std::string symbolName);
 

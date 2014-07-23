@@ -32,10 +32,21 @@ void CodeGen::genCode(tree *t) {
     // generate the code
     _genPrologue();
 
+    /*
+    //populate symbol table's offset
+    for (ProcedureTable::iterator it = SymbolTable::getInstance()->symbolTable.begin(); it != SymbolTable::getInstance()->symbolTable.end(); ++it) {
+        cerr << "--- TEST ---" << endl;
+        string procName = it->first;
+        vector<string> &signatures = SymbolTable::getInstance()->getSignature(procName);
+        for (vector<string>::iterator it2 = signatures.begin(); it2 != signatures.end(); ++ it2) {
+            cerr << *it2 << endl;
+        }
+    }
+    */
+    
     //start BOF procedures EOF
     string currentProcedure = "";
     _genCode(t->children[1], currentProcedure);
-
 }
 
 void CodeGen::pushToStack(int reg, string symbolId) {
@@ -78,7 +89,7 @@ void CodeGen::_genCode(tree *t, string currentProcedure) {
     }
 
     if (t->rule == "procedures procedure procedures") {
-        // reverse the orders
+        // reverse the orders so main goes first
         _genCode(t->children[1], currentProcedure);
         _genCode(t->children[0], currentProcedure);
     }
@@ -93,19 +104,66 @@ void CodeGen::_genCode(tree *t, string currentProcedure) {
 
         // update stack frame
         int tempCurStackPtr = curStackPtr;
-        curStackPtr = 0; // reset stack ptr for procedure
+
+        // reset stack ptr for procedure
+        // set to number of arguments * 4
+        curStackPtr = 0; //SymbolTable::getInstance()->getSignature(procName).size() * -4;
+
         cout << "sub $29, $30, $4" << endl; // update $29 to just after arguments and before local vars
 
         // TODO: add # of params to symbol table
-        _genCode(t->children[3], procName); // params
-
         cout << "; " << procName << " declarations: " << endl;
-        _genCode(t->children[6], procName); // dcls
+        _genCode(t->children[6], procName); // dcls (local)
 
+        // set offsets for arguments
+        cerr << "-- ARGUMENTS FOR " << procName << " ---" << endl;
+        int offset = SymbolTable::getInstance()->getSignature(procName).size() * 4; // below the stack frame (positive)
+        vector<std::string> &signature = SymbolTable::getInstance()->getSignature(procName);
+        tree *params = t->children[3];
+        for (;;) {
+            if (params->rule == "params paramlist") {
+                params = params->children[0];
+            }
+            if (params->rule == "paramlist dcl COMMA paramlist") {
+                string var = params->children[0]->children[1]->tokens[1];
+                cerr << var << endl;
+                SymbolTable::getInstance()->setSymbolOffset(procName, var, offset);
+                offset -= 4;
+                params = params->children[2];
+            }
+            if (params->rule == "paramlist dcl") {
+                string var = params->children[0]->children[1]->tokens[1];
+                cerr << var << endl;
+                SymbolTable::getInstance()->setSymbolOffset(procName, var, offset);
+                offset -= 4;
+                break;
+            }
+            if (params->rule == "params") break;
+        }
+        // print symbol table
+        InnerSymbolMap &innerSymbolMap= SymbolTable::getInstance()->getInnerSymbolMap(procName);
+        cerr << "Symbol Table: " << endl;
+        for (InnerSymbolMap::iterator it = innerSymbolMap.begin(); it != innerSymbolMap.end(); it++) {
+            cerr << it->first << " : " << it->second.second << endl;
+        }
+        /*
+        // another way, if the offsets were all originally as expected, i.e. (0, -4, -8) starting with arguments, then locals
+        cerr << "Revised Symbol Table:" << endl;
+        for (InnerSymbolMap::iterator it = innerSymbolMap.begin(); it != innerSymbolMap.end(); it++) {
+            int offset = it->second.second;
+            int newOffset = offset + SymbolTable::getInstance()->getSignature(procName).size() * 4 ; // 4 * (# of params)
+            SymbolTable::getInstance()->setSymbolOffset(procName, it->first, newOffset);
+            cerr << it->first << " : " << newOffset << endl;
+        }
+        */
+        cerr << endl;
+        
+        // statements and expressions in procedure
+        cout << "; stmts" << endl;
         _genCode(t->children[7], procName); // statements
+        cout << "; exprs" << endl;
         _genCode(t->children[9], procName); // expr (return)
-
-
+        
         curStackPtr = tempCurStackPtr; // restore stack ptr
         cout << "add $30, $29, $4" << " ; restore stack ptr" << endl;
         cout << "jr $31" << endl;
@@ -115,8 +173,8 @@ void CodeGen::_genCode(tree *t, string currentProcedure) {
     if (t->rule == "factor ID LPAREN RPAREN") {
         string label = "F" + t->children[0]->tokens[1];
         pushToStack(29, "stack frame");
-        pushToStack(31, "PC");
-
+        pushToStack(31, "$31");
+        
         cout << "lis $5" << endl;
         cout << ".word " << label << endl;
         cout << "jalr $5 " << endl;
@@ -124,6 +182,39 @@ void CodeGen::_genCode(tree *t, string currentProcedure) {
         popToRegister(29);
     }
 
+    // procedure call with no params
+    if (t->rule == "factor ID LPAREN arglist RPAREN") {
+        string label = "F" + t->children[0]->tokens[1];
+        pushToStack(29, "stack frame");
+        pushToStack(31, "$31");
+
+        int varCount = 0;
+        // push all params onto stack
+        tree *arglist = t->children[2];
+        for(;;) {
+            _genCode(arglist->children[0], currentProcedure); // expr
+            pushToStack(3, "argument");
+            ++ varCount;
+
+            if (arglist->rule == "arglist expr") break;
+
+            // arglist -> expr COMMA arglistp
+            arglist = arglist->children[2]; // arglist
+        }
+        
+        cout << "lis $5" << endl;
+        cout << ".word " << label << endl;
+        cout << "jalr $5 " << endl;
+
+        // pop arguments
+        cout << "lis $5" << endl;
+        cout << ".word " << varCount * 4 << endl;
+        cout << "add $30, $30, $5" << endl;
+        
+        popToRegister(31);
+        popToRegister(29);
+    }
+    
     // wain declaration
     if(t->rule == "main INT WAIN LPAREN dcl COMMA dcl RPAREN LBRACE dcls statements RETURN expr SEMI RBRACE") {
         currentProcedure = "wain";
